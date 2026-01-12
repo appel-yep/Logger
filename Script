@@ -1,0 +1,167 @@
+-- =====================================================================
+--  TOWER HEROES RECORDER (V37 - SMART SKIP SENSOR)
+-- =====================================================================
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+local TroopFolder = workspace:WaitForChild("Troop")
+
+local SessionLogs = {}
+local TroopCounts = {}
+local TroopMapping = {} 
+local IsAutoSkipEnabled = false -- Tracks the current state of the game setting
+
+-- UI Setup
+local pGui = player:WaitForChild("PlayerGui")
+local sg = Instance.new("ScreenGui", pGui)
+sg.Name = "EngineV19_Recorder_V37"
+sg.ResetOnSpawn = false
+
+local main = Instance.new("Frame", sg)
+main.Size = UDim2.new(0, 280, 0, 420)
+main.Position = UDim2.new(0.05, 0, 0.2, 0)
+main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+main.Active = true
+main.Draggable = true
+Instance.new("UICorner", main)
+
+local title = Instance.new("TextLabel", main)
+title.Size = UDim2.new(1, 0, 0, 35)
+title.Text = "ENGINE V19 RECORDER"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+title.Font = Enum.Font.SourceSansBold
+
+local scroll = Instance.new("ScrollingFrame", main)
+scroll.Size = UDim2.new(1, -10, 1, -130)
+scroll.Position = UDim2.new(0, 5, 0, 40)
+scroll.BackgroundTransparency = 1
+scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+local layout = Instance.new("UIListLayout", scroll)
+layout.Padding = UDim.new(0, 5)
+
+local function addLog(text, code, color)
+    table.insert(SessionLogs, code)
+    local btn = Instance.new("TextButton", scroll)
+    btn.Size = UDim2.new(1, -10, 0, 32)
+    btn.BackgroundColor3 = color or Color3.fromRGB(45, 45, 45)
+    btn.Text = "  " .. text
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.SourceSans
+    btn.TextSize = 14
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    Instance.new("UICorner", btn)
+    
+    btn.MouseButton1Click:Connect(function() 
+        if setclipboard then setclipboard(code) end
+    end)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+    scroll.CanvasPosition = Vector2.new(0, layout.AbsoluteContentSize.Y)
+end
+
+-- =====================================================================
+--  MASTER REMOTE HOOK
+-- =====================================================================
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local args = {...}
+    local method = getnamecallmethod()
+    local remoteName = tostring(self)
+
+    if method == "FireServer" then
+        -- 1. PLACEMENT
+        if remoteName == "TroopPlace" and typeof(args[2]) == "Vector3" then
+            local troopTemplate = args[1]
+            local pos = args[2]
+            local name = troopTemplate.Name
+            
+            TroopCounts[name] = (TroopCounts[name] or 0) + 1
+            local index = TroopCounts[name]
+            
+            task.spawn(function()
+                local found = false
+                for i = 1, 10 do
+                    task.wait(0.2)
+                    for _, v in ipairs(TroopFolder:GetChildren()) do
+                        if v.Name == name and not TroopMapping[v] then
+                            local d = (v:GetModelCFrame().Position - pos).Magnitude
+                            if d < 5 then 
+                                TroopMapping[v] = {name = name, index = index, level = 1}
+                                found = true break 
+                            end
+                        end
+                    end
+                    if found then break end
+                end
+            end)
+
+            addLog("Place " .. name, string.format('QueuePlace("%s", %.4f, %.4f, %.4f)', name, pos.X, pos.Y, pos.Z), Color3.fromRGB(40, 100, 40))
+
+        -- 2. TROOP EVENTS
+        elseif remoteName == "TroopEvent" then
+            local action = args[1]
+            local model = args[2]
+            
+            if action == "Upgrade" then
+                local data = TroopMapping[model]
+                if data then
+                    data.level = data.level + 1
+                    addLog("Up " .. data.name, string.format('QueueUpgrade("%s", %d, %d)', data.name, data.index, data.level), Color3.fromRGB(40, 60, 100))
+                end
+            elseif action == "Sell" then
+                local data = TroopMapping[model]
+                if data then
+                    addLog("Sell " .. data.name, string.format('QueueSell("%s", %d)', data.name, data.index), Color3.fromRGB(150, 50, 50))
+                    TroopMapping[model] = nil
+                end
+            end
+
+        -- 3. SKIP SENSOR
+        elseif remoteName == "SkipWave" then
+            -- Only log a manual skip if Auto Skip is turned OFF
+            if not IsAutoSkipEnabled then
+                addLog("Manual Skip", "QueueSkip()", Color3.fromRGB(120, 80, 0))
+            end
+
+        -- 4. SETTINGS SENSOR (Auto Skip)
+        elseif remoteName == "SettingChange" then
+            local settings = args[1]
+            if settings and settings["Auto Skip"] ~= nil then
+                IsAutoSkipEnabled = settings["Auto Skip"]
+                local cmd = IsAutoSkipEnabled and "EnableAutoSkip()" or "DisableAutoSkip()"
+                local label = "AutoSkip: " .. tostring(IsAutoSkipEnabled)
+                addLog(label, cmd, Color3.fromRGB(0, 80, 120))
+            end
+
+        -- 5. MODE VOTE
+        elseif remoteName == "ModeVote" then
+            local mode = tostring(args[1])
+            addLog("Vote: " .. mode, string.format('VoteMode("%s")', mode), Color3.fromRGB(0, 150, 150))
+        end
+    end
+    return oldNamecall(self, ...)
+end)
+
+-- GENERATE BUTTON
+local copyAllBtn = Instance.new("TextButton", main)
+copyAllBtn.Size = UDim2.new(1, -20, 0, 40)
+copyAllBtn.Position = UDim2.new(0, 10, 1, -85)
+copyAllBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
+copyAllBtn.Text = "GENERATE SCRIPT"
+copyAllBtn.TextColor3 = Color3.new(1, 1, 1)
+copyAllBtn.Font = Enum.Font.SourceSansBold
+Instance.new("UICorner", copyAllBtn)
+
+copyAllBtn.MouseButton1Click:Connect(function()
+    local loader = '-- Recorded with Stew's Recorder\nloadstring(game:HttpGet("https://raw.githubusercontent.com/appel-yep/TowerHeroesUltimate/refs/heads/main/Script"))()\n\n'
+    local actions = table.concat(SessionLogs, "\n")
+    local exec = '\n\nStartAutomation()\nprint("Sequence Successful")'
+    
+    if setclipboard then
+        setclipboard(loader .. actions .. exec)
+        copyAllBtn.Text = "COPIED TO CLIPBOARD!"
+        task.wait(2)
+        copyAllBtn.Text = "GENERATE SCRIPT"
+    end
+end)
