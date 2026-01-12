@@ -28,7 +28,7 @@ Instance.new("UICorner", main)
 
 local title = Instance.new("TextLabel", main)
 title.Size = UDim2.new(1, 0, 0, 35)
-title.Text = "ENGINE V19 RECORDER"
+title.Text = "Logger"
 title.TextColor3 = Color3.new(1, 1, 1)
 title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 title.Font = Enum.Font.SourceSansBold
@@ -154,7 +154,7 @@ copyAllBtn.Font = Enum.Font.SourceSansBold
 Instance.new("UICorner", copyAllBtn)
 
 copyAllBtn.MouseButton1Click:Connect(function()
-    local loader = '-- Recorded with Stew's Recorder\nloadstring(game:HttpGet("https://raw.githubusercontent.com/appel-yep/TowerHeroesUltimate/refs/heads/main/Script"))()\n\n'
+    local loader = '-- Recorded with Stews Recorder\nloadstring(game:HttpGet("https://raw.githubusercontent.com/appel-yep/TowerHeroesUltimate/refs/heads/main/Script"))()\n\n'
     local actions = table.concat(SessionLogs, "\n")
     local exec = '\n\nStartAutomation()\nprint("Sequence Successful")'
     
