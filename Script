@@ -1,7 +1,3 @@
--- =====================================================================
---  TOWER HEROES RECORDER (V40 - CLEAR & DELETE HEROES)
--- =====================================================================
-
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
@@ -12,16 +8,30 @@ local SessionLogs = {}
 local TroopCounts = {}
 local TroopMapping = {} 
 local IsAutoSkipEnabled = false 
-local ConfirmDelete = false -- For the warning system
+local ConfirmDelete = false
 
--- UI Setup
+local UpgradePrices = {
+    ["Chef"] = {
+        [1] = 1000, 
+        [2] = 2200, 
+        [3] = 3700, 
+        [4] = 6000  
+    },
+    ["Wizard"] = {
+        [1] = 430,  
+        [2] = 1500, 
+        [3] = 2400, 
+        [4] = 4500  
+    }
+}
+
 local pGui = player:WaitForChild("PlayerGui")
 local sg = Instance.new("ScreenGui", pGui)
-sg.Name = "EngineV19_Recorder_V40"
+sg.Name = "StewsLogger_V51"
 sg.ResetOnSpawn = false
 
 local main = Instance.new("Frame", sg)
-main.Size = UDim2.new(0, 280, 0, 460)
+main.Size = UDim2.new(0, 260, 0, 420)
 main.Position = UDim2.new(0.05, 0, 0.2, 0)
 main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 main.Active = true
@@ -30,18 +40,21 @@ Instance.new("UICorner", main)
 
 local title = Instance.new("TextLabel", main)
 title.Size = UDim2.new(1, 0, 0, 35)
-title.Text = "Logger"
+title.Text = "Stews Logger"
 title.TextColor3 = Color3.new(1, 1, 1)
 title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 title.Font = Enum.Font.SourceSansBold
+title.TextSize = 18
+Instance.new("UICorner", title)
 
 local scroll = Instance.new("ScrollingFrame", main)
-scroll.Size = UDim2.new(1, -10, 1, -170)
-scroll.Position = UDim2.new(0, 5, 0, 40)
+scroll.Size = UDim2.new(1, -20, 1, -155)
+scroll.Position = UDim2.new(0, 10, 0, 45)
 scroll.BackgroundTransparency = 1
+scroll.ScrollBarThickness = 4
 scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0, 5)
+layout.Padding = UDim.new(0, 4)
 
 local function addLog(text, code, color)
     table.insert(SessionLogs, code)
@@ -50,19 +63,16 @@ local function addLog(text, code, color)
     btn.BackgroundColor3 = color or Color3.fromRGB(45, 45, 45)
     btn.Text = "  " .. text
     btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.SourceSans
-    btn.TextSize = 14
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 15
     btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.ClipsDescendants = true
     Instance.new("UICorner", btn)
-    
-    btn.MouseButton1Click:Connect(function() 
-        if setclipboard then setclipboard(code) end
-    end)
+    btn.MouseButton1Click:Connect(function() if setclipboard then setclipboard(code) end end)
     scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
     scroll.CanvasPosition = Vector2.new(0, layout.AbsoluteContentSize.Y)
 end
 
--- [REMOTE HOOK REMAINS SAME AS V39]
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}
@@ -76,6 +86,7 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                 local pos = args[2]
                 TroopCounts[name] = (TroopCounts[name] or 0) + 1
                 local index = TroopCounts[name]
+                
                 task.delay(0.5, function()
                     for _, v in ipairs(TroopFolder:GetChildren()) do
                         if v.Name == name and not TroopMapping[v] then
@@ -87,16 +98,48 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                     end
                 end)
                 addLog("Place " .. name, string.format('QueuePlace("%s", %.4f, %.4f, %.4f)', name, pos.X, pos.Y, pos.Z), Color3.fromRGB(40, 100, 40))
+
             elseif remoteName == "TroopEvent" then
-                if args[1] == "Upgrade" then
+                local action = args[1]
+                
+                if action == "Upgrade" then
                     local data = TroopMapping[args[2]]
-                    if data then data.level = data.level + 1 addLog("Up " .. data.name, string.format('QueueUpgrade("%s", %d, %d)', data.name, data.index, data.level), Color3.fromRGB(40, 60, 100)) end
-                elseif args[1] == "Sell" then
+                    if data then 
+                        data.level = data.level + 1 
+                        addLog(string.format("Upgrade %s %d", data.name, data.index), string.format('QueueUpgrade("%s", %d, %d)', data.name, data.index, data.level), Color3.fromRGB(40, 60, 100)) 
+                    end
+                elseif action == "Sell" then
                     local data = TroopMapping[args[2]]
-                    if data then addLog("Sell " .. data.name, string.format('QueueSell("%s", %d)', data.name, data.index), Color3.fromRGB(150, 50, 50)) TroopMapping[args[2]] = nil end
-                elseif args[1] == "BulkUp" then
-                    addLog("Bulk " .. (args[3] or ""), string.format('QueueBulk("%s")', args[3] or ""), Color3.fromRGB(80, 40, 120))
+                    if data then 
+                        addLog("Sell " .. data.name, string.format('QueueSell("%s", %d)', data.name, data.index), Color3.fromRGB(150, 50, 50)) 
+                        TroopMapping[args[2]] = nil 
+                    end
+                elseif action == "BulkUp" then
+                    local bulkName = args[3] or "Unknown"
+                    local totalCost = 0
+                    local targets = {}
+                    
+                    for model, data in pairs(TroopMapping) do
+                        if data.name == bulkName then
+                            local currentLvl = data.level
+                            local priceData = UpgradePrices[bulkName]
+                            if priceData and priceData[currentLvl] then
+                                totalCost = totalCost + priceData[currentLvl]
+                            end
+                            table.insert(targets, data)
+                        end
+                    end
+                    
+                    if totalCost > 0 then
+                        addLog("Wait Mana: " .. totalCost, string.format('QueueWaitMana(%d)', totalCost), Color3.fromRGB(100, 100, 40))
+                    end
+                    addLog("Bulk " .. bulkName, string.format('QueueBulk("%s")', bulkName), Color3.fromRGB(80, 40, 120))
+                    
+                    for _, data in ipairs(targets) do
+                        data.level = data.level + 1
+                    end
                 end
+
             elseif remoteName == "SkipWave" and not IsAutoSkipEnabled then
                 addLog("Manual Skip", "QueueSkip()", Color3.fromRGB(120, 80, 0))
             elseif remoteName == "SettingChange" and args[1] and args[1]["Auto Skip"] ~= nil then
@@ -110,7 +153,6 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     return oldNamecall(self, ...)
 end)
 
--- [BUTTONS]
 local copyAllBtn = Instance.new("TextButton", main)
 copyAllBtn.Size = UDim2.new(1, -20, 0, 35)
 copyAllBtn.Position = UDim2.new(0, 10, 1, -85)
@@ -118,55 +160,41 @@ copyAllBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
 copyAllBtn.Text = "GENERATE SCRIPT"
 copyAllBtn.TextColor3 = Color3.new(1, 1, 1)
 copyAllBtn.Font = Enum.Font.SourceSansBold
+copyAllBtn.TextSize = 16
 Instance.new("UICorner", copyAllBtn)
 
 local clearBtn = Instance.new("TextButton", main)
 clearBtn.Size = UDim2.new(1, -20, 0, 35)
-clearBtn.Position = UDim2.new(0, 10, 1, -45)
+clearBtn.Position = UDim2.new(0, 10, 1, -40)
 clearBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-clearBtn.Text = "CLEAR LOGS & HEROES"
+clearBtn.Text = "RESET"
 clearBtn.TextColor3 = Color3.new(1, 1, 1)
 clearBtn.Font = Enum.Font.SourceSansBold
+clearBtn.TextSize = 16
 Instance.new("UICorner", clearBtn)
 
 copyAllBtn.MouseButton1Click:Connect(function()
-    local loader = '-- Recorded Script\nloadstring(game:HttpGet("https://raw.githubusercontent.com/appel-yep/TowerHeroesUltimate/refs/heads/main/Script"))()\n\n'
-    setclipboard(loader .. table.concat(SessionLogs, "\n") .. '\n\nStartAutomation()')
-    copyAllBtn.Text = "COPIED!"
-    task.wait(1.5)
-    copyAllBtn.Text = "GENERATE SCRIPT"
+    local loader = '-- Recorded Script\nloadstring(game:HttpGet("https://raw.githubusercontent.com/appel-yep/TowerHeroesUltimate/refs/heads/main/Script"))()\nDisableAutoSkip()\n\n'
+    if setclipboard then
+        setclipboard(loader .. table.concat(SessionLogs, "\n") .. '\n\nStartAutomation()')
+        copyAllBtn.Text = "COPIED!"
+        task.wait(1.5)
+        copyAllBtn.Text = "GENERATE SCRIPT"
+    end
 end)
 
 clearBtn.MouseButton1Click:Connect(function()
     if not ConfirmDelete then
         ConfirmDelete = true
-        clearBtn.Text = "ARE YOU SURE? (CLEARS ALL)"
-        clearBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        task.delay(2, function()
-            ConfirmDelete = false
-            clearBtn.Text = "CLEAR LOGS & HEROES"
-            clearBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-        end)
+        clearBtn.Text = "ARE YOU SURE?"
+        task.delay(2, function() ConfirmDelete = false clearBtn.Text = "RESET" end)
     else
-        -- 1. Mass Sell Heroes in Workspace
-        for _, hero in ipairs(TroopFolder:GetChildren()) do
-            TroopEvent:FireServer("Sell", hero)
-        end
-        
-        -- 2. Clear Internal State
-        SessionLogs = {}
-        TroopCounts = {}
-        TroopMapping = {}
-        
-        -- 3. Clear Visual UI
-        for _, child in ipairs(scroll:GetChildren()) do
-            if child:IsA("TextButton") then child:Destroy() end
-        end
-        
+        for _, hero in ipairs(TroopFolder:GetChildren()) do TroopEvent:FireServer("Sell", hero) end
+        SessionLogs, TroopCounts, TroopMapping = {}, {}, {}
+        for _, child in ipairs(scroll:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
         ConfirmDelete = false
-        clearBtn.Text = "LOGS & HEROES WIPED!"
+        clearBtn.Text = "RESET SUCCESS"
         task.wait(1.5)
-        clearBtn.Text = "CLEAR LOGS & HEROES"
-        clearBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+        clearBtn.Text = "RESET"
     end
 end)
