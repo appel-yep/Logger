@@ -9,6 +9,7 @@ local TroopCounts = {}
 local TroopMapping = {} 
 local IsAutoSkipEnabled = false 
 local ConfirmDelete = false
+local FileIteration = 1 
 
 local UpgradePrices = {
     ["Chef"] = {[1] = 110, [2] = 1000, [3] = 2200, [4] = 3700, [5] = 6000},
@@ -90,6 +91,7 @@ local function addLog(text, code, color)
     btn.TextXAlignment = Enum.TextXAlignment.Left
     btn.ClipsDescendants = true
     Instance.new("UICorner", btn)
+    -- Individual log items still copy their specific line on click
     btn.MouseButton1Click:Connect(function() if setclipboard then setclipboard(code) end end)
     scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
     scroll.CanvasPosition = Vector2.new(0, layout.AbsoluteContentSize.Y)
@@ -109,12 +111,11 @@ local function attachSensor(checkbox)
     end
 end
 
--- Initial scan and watch for new popups
 local initialBox = pGui:FindFirstChild("CheckBoxSKIP", true)
 if initialBox then attachSensor(initialBox) end
 pGui.DescendantAdded:Connect(function(d) if d.Name == "CheckBoxSKIP" then task.wait(0.1) attachSensor(d) end end)
 
--- --- REMAINING LOGGER LOGIC ---
+-- --- LOGGER REMOTE HOOKS ---
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}
@@ -182,47 +183,69 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     return oldNamecall(self, ...)
 end)
 
-local copyAllBtn = Instance.new("TextButton", main)
-copyAllBtn.Size = UDim2.new(1, -20, 0, 35)
-copyAllBtn.Position = UDim2.new(0, 10, 1, -85)
-copyAllBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
-copyAllBtn.Text = "GENERATE SCRIPT"
-copyAllBtn.TextColor3 = Color3.new(1, 1, 1)
-copyAllBtn.Font = Enum.Font.SourceSansBold
-copyAllBtn.TextSize = 16
-Instance.new("UICorner", copyAllBtn)
+-- --- BUTTONS ---
+local saveOnlyBtn = Instance.new("TextButton", main)
+saveOnlyBtn.Size = UDim2.new(1, -20, 0, 35)
+saveOnlyBtn.Position = UDim2.new(0, 10, 1, -85)
+saveOnlyBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
+saveOnlyBtn.Text = "SAVE STRAT TO FILE"
+saveOnlyBtn.TextColor3 = Color3.new(1, 1, 1)
+saveOnlyBtn.Font = Enum.Font.SourceSansBold
+saveOnlyBtn.TextSize = 16
+Instance.new("UICorner", saveOnlyBtn)
 
 local clearBtn = Instance.new("TextButton", main)
 clearBtn.Size = UDim2.new(1, -20, 0, 35)
 clearBtn.Position = UDim2.new(0, 10, 1, -40)
 clearBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-clearBtn.Text = "RESET"
+clearBtn.Text = "RESET ALL"
 clearBtn.TextColor3 = Color3.new(1, 1, 1)
 clearBtn.Font = Enum.Font.SourceSansBold
 clearBtn.TextSize = 16
 Instance.new("UICorner", clearBtn)
 
-copyAllBtn.MouseButton1Click:Connect(function()
+saveOnlyBtn.MouseButton1Click:Connect(function()
     local loader = '-- Recorded Script\nloadstring(game:HttpGet("https://raw.githubusercontent.com/appel-yep/TowerHeroesUltimate/refs/heads/main/Script"))()\nDisableAutoSkip()\n\n'
-    if setclipboard then
-        setclipboard(loader .. table.concat(SessionLogs, "\n") .. '\n\nStartAutomation()')
-        copyAllBtn.Text = "COPIED!"
-        task.wait(1.5)
-        copyAllBtn.Text = "GENERATE SCRIPT"
+    local fullScript = loader .. table.concat(SessionLogs, "\n") .. '\n\nStartAutomation()'
+    
+    if writefile then
+        -- Find a number that hasn't been used yet
+        while isfile and isfile("Logged_Strat_" .. tostring(FileIteration) .. ".lua") do
+            FileIteration = FileIteration + 1
+        end
+        
+        local fileName = "Logged_Strat_" .. tostring(FileIteration) .. ".lua"
+        pcall(function()
+            writefile(fileName, fullScript)
+            saveOnlyBtn.Text = "FILE #" .. tostring(FileIteration) .. " SAVED!"
+        end)
+        FileIteration = FileIteration + 1 
+    else
+        saveOnlyBtn.Text = "ERROR: NO FILE ACCESS"
     end
+    
+    task.wait(2)
+    saveOnlyBtn.Text = "SAVE STRAT TO FILE"
 end)
 
 clearBtn.MouseButton1Click:Connect(function()
     if not ConfirmDelete then
         ConfirmDelete = true
-        clearBtn.Text = "ARE YOU SURE?"
-        task.delay(2, function() ConfirmDelete = false clearBtn.Text = "RESET" end)
+        clearBtn.Text = "SELL ALL & CLEAR?"
+        task.delay(2, function() ConfirmDelete = false clearBtn.Text = "RESET ALL" end)
     else
+        for model, _ in pairs(TroopMapping) do
+            if model and model.Parent then
+                TroopEvent:FireServer("Sell", model)
+            end
+        end
+        
         SessionLogs, TroopCounts, TroopMapping = {}, {}, {}
         for _, child in ipairs(scroll:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
+        
         ConfirmDelete = false
         clearBtn.Text = "RESET SUCCESS"
         task.wait(1.5)
-        clearBtn.Text = "RESET"
+        clearBtn.Text = "RESET ALL"
     end
 end)
