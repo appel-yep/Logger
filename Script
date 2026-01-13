@@ -95,6 +95,26 @@ local function addLog(text, code, color)
     scroll.CanvasPosition = Vector2.new(0, layout.AbsoluteContentSize.Y)
 end
 
+-- --- SMART AUTO-SKIP SENSOR LOGIC ---
+local function attachSensor(checkbox)
+    for _, desc in ipairs(checkbox:GetDescendants()) do
+        if desc:IsA("GuiObject") and desc.Name ~= "Holder" then
+            desc:GetPropertyChangedSignal("Visible"):Connect(function()
+                IsAutoSkipEnabled = desc.Visible
+                local statusText = IsAutoSkipEnabled and "Enabled" or "Disabled"
+                local command = IsAutoSkipEnabled and "EnableAutoSkip()" or "DisableAutoSkip()"
+                addLog("AutoSkip: " .. statusText, command, Color3.fromRGB(0, 100, 150))
+            end)
+        end
+    end
+end
+
+-- Initial scan and watch for new popups
+local initialBox = pGui:FindFirstChild("CheckBoxSKIP", true)
+if initialBox then attachSensor(initialBox) end
+pGui.DescendantAdded:Connect(function(d) if d.Name == "CheckBoxSKIP" then task.wait(0.1) attachSensor(d) end end)
+
+-- --- REMAINING LOGGER LOGIC ---
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}
@@ -123,7 +143,6 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 
             elseif remoteName == "TroopEvent" then
                 local action = args[1]
-                
                 if action == "Upgrade" then
                     local data = TroopMapping[args[2]]
                     if data then 
@@ -140,33 +159,21 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                     local bulkName = args[3] or "Unknown"
                     local totalCost = 0
                     local targets = {}
-                    
                     for model, data in pairs(TroopMapping) do
                         if data.name == bulkName then
                             local nextLvl = data.level + 1
                             local priceData = UpgradePrices[bulkName]
-                            if priceData and priceData[nextLvl] then
-                                totalCost = totalCost + priceData[nextLvl]
-                            end
+                            if priceData and priceData[nextLvl] then totalCost = totalCost + priceData[nextLvl] end
                             table.insert(targets, data)
                         end
                     end
-                    
-                    if totalCost > 0 then
-                        addLog("Wait Mana: " .. totalCost, string.format('QueueWaitMana(%d)', totalCost), Color3.fromRGB(100, 100, 40))
-                    end
+                    if totalCost > 0 then addLog("Wait Mana: " .. totalCost, string.format('QueueWaitMana(%d)', totalCost), Color3.fromRGB(100, 100, 40)) end
                     addLog("Bulk " .. bulkName, string.format('QueueBulk("%s")', bulkName), Color3.fromRGB(80, 40, 120))
-                    
-                    for _, data in ipairs(targets) do
-                        data.level = data.level + 1
-                    end
+                    for _, data in ipairs(targets) do data.level = data.level + 1 end
                 end
 
             elseif remoteName == "SkipWave" and not IsAutoSkipEnabled then
                 addLog("Manual Skip", "QueueSkip()", Color3.fromRGB(120, 80, 0))
-            elseif remoteName == "SettingChange" and args[1] and args[1]["Auto Skip"] ~= nil then
-                IsAutoSkipEnabled = args[1]["Auto Skip"]
-                addLog("AutoSkip: " .. tostring(IsAutoSkipEnabled), IsAutoSkipEnabled and "EnableAutoSkip()" or "DisableAutoSkip()", Color3.fromRGB(0, 80, 120))
             elseif remoteName == "ModeVote" then
                 addLog("Vote: " .. tostring(args[1]), string.format('VoteMode("%s")', tostring(args[1])), Color3.fromRGB(0, 150, 150))
             end
@@ -211,7 +218,6 @@ clearBtn.MouseButton1Click:Connect(function()
         clearBtn.Text = "ARE YOU SURE?"
         task.delay(2, function() ConfirmDelete = false clearBtn.Text = "RESET" end)
     else
-        for _, hero in ipairs(TroopFolder:GetChildren()) do TroopEvent:FireServer("Sell", hero) end
         SessionLogs, TroopCounts, TroopMapping = {}, {}, {}
         for _, child in ipairs(scroll:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
         ConfirmDelete = false
